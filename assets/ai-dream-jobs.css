@@ -1,0 +1,189 @@
+.cq-wrap {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.cq-card {
+  border: 1px solid #e5e5e5;
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 12px 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+
+.cq-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 0 8px;
+}
+
+.cq-title {
+  font-size: 20px;
+  margin: 0;
+}
+
+.cq-sub {
+  color: #666;
+  margin: 0 0 8px;
+}
+
+.cq-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.cq-list-small .cq-item {
+  cursor: default;
+}
+
+.cq-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  background: #fff;
+  cursor: grab;
+  touch-action: none; /* helps on mobile */
+}
+
+.cq-item.dragging {
+  opacity: 0.6;
+}
+
+.cq-item-static {
+  cursor: default;
+}
+
+.cq-handle {
+  font-weight: 700;
+  opacity: 0.6;
+  cursor: grab;
+}
+
+.cq-label {
+  flex: 1;
+}
+
+.cq-rankpill {
+  min-width: 60px;
+  text-align: center;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f2f2f2;
+}
+
+.cq-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.cq-btn {
+  border: 1px solid #111;
+  background: #111;
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.cq-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cq-ghost {
+  height: 44px;
+  border: 2px dashed #ccc;
+  border-radius: 12px;
+  margin: 8px 0;
+}
+
+/* Input screen */
+
+.cq-inputs-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.cq-input-row label {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.cq-input-row input {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+
+/* Results & AI analysis */
+
+.cq-analysis {
+  margin-top: 14px;
+}
+
+.cq-analysis-text {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  font-size: 14px;
+  color: #333;
+}
+
+.cq-chat-title {
+  margin-top: 18px;
+  margin-bottom: 4px;
+  font-size: 18px;
+}
+
+.cq-chat-sub {
+  color: #666;
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.cq-chatwrap {
+  border-top: 1px solid #eee;
+  padding-top: 10px;
+}
+
+/* Old table styles kept for compatibility if needed */
+.cq-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px,1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.cq-chip {
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.cq-muted {
+  color: #666;
+  font-size: 13px;
+}
+
+.cq-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
