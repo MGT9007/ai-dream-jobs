@@ -2,14 +2,14 @@
 /**
  * Plugin Name: AI Dream Jobs
  * Description: Students enter 5 dream jobs, rank them, then get AI-powered career feedback & chat. Use shortcode [ai_dream_jobs].
- * Version: 5.1.0
+ * Version: 5.1.1
  * Author: MisterT9007
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class AI_Dream_Jobs {
-    const VERSION      = '5.1.0';
+    const VERSION      = '5.1.1';
     const TABLE        = 'ai_dream_jobs_results';
     const NONCE_ACTION = 'wp_rest';
 
@@ -18,6 +18,18 @@ class AI_Dream_Jobs {
         add_action( 'init', array( $this, 'register_assets' ) );
         add_shortcode( 'ai_dream_jobs', array( $this, 'shortcode' ) );
         add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+        
+        // Force flush rewrite rules on version change
+        add_action( 'plugins_loaded', array( $this, 'check_version' ) );
+    }
+
+    public function check_version() {
+        $saved_version = get_option( 'ai_dream_jobs_version' );
+        if ( $saved_version !== self::VERSION ) {
+            flush_rewrite_rules();
+            update_option( 'ai_dream_jobs_version', self::VERSION );
+            error_log( 'AI Dream Jobs: Flushed rewrite rules for version ' . self::VERSION );
+        }
     }
 
     public function on_activate() {
@@ -42,6 +54,9 @@ class AI_Dream_Jobs {
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($sql);
+        
+        // Force flush on activation
+        flush_rewrite_rules();
     }
 
     public function register_assets() {
@@ -97,6 +112,8 @@ class AI_Dream_Jobs {
     }
 
     public function register_routes() {
+        error_log( 'AI Dream Jobs: Registering REST routes' );
+        
         register_rest_route( 'ai-dream-jobs/v1', '/submit', array(
             'methods'             => 'POST',
             'callback'            => array( $this, 'handle_submit' ),
@@ -121,6 +138,8 @@ class AI_Dream_Jobs {
         global $wpdb;
         $user_id = $this->get_current_user_id();
 
+        error_log( 'AI Dream Jobs Status: user_id=' . $user_id );
+
         if ( ! $user_id ) {
             return new WP_REST_Response( array(
                 'ok' => true,
@@ -134,6 +153,8 @@ class AI_Dream_Jobs {
             "SELECT * FROM $table WHERE user_id = %d LIMIT 1",
             $user_id
         ), ARRAY_A );
+
+        error_log( 'AI Dream Jobs Status: DB result=' . print_r( $saved, true ) );
 
         if ( ! $saved ) {
             return new WP_REST_Response( array(
@@ -176,6 +197,8 @@ class AI_Dream_Jobs {
             global $wpdb;
             $user_id = $this->get_current_user_id();
 
+            error_log( 'AI Dream Jobs Submit: user_id=' . $user_id );
+
             if ( ! $user_id ) {
                 return new WP_REST_Response( array(
                     'ok' => false,
@@ -186,6 +209,8 @@ class AI_Dream_Jobs {
             $jobs = array_map( 'sanitize_text_field', (array) $req->get_param('jobs') );
             $ranking = array_map( 'sanitize_text_field', (array) $req->get_param('ranking') );
             $step = sanitize_text_field( $req->get_param('step') );
+
+            error_log( 'AI Dream Jobs Submit: step=' . $step . ', jobs=' . print_r( $jobs, true ) );
 
             $table = $wpdb->prefix . self::TABLE;
 
@@ -203,36 +228,45 @@ class AI_Dream_Jobs {
             // Handle different steps
             if ( $step === 'save_input' ) {
                 // Save jobs with in_progress status
-                $result = $wpdb->replace( $table, array(
+                $data = array(
                     'user_id' => $user_id,
                     'jobs_json' => wp_json_encode( $jobs ),
                     'ranking_json' => wp_json_encode( $ranking ),
                     'status' => 'in_progress',
                     'mbti_type' => $mbti_type
-                ), array( '%d', '%s', '%s', '%s', '%s' ) );
+                );
+                
+                $format = array( '%d', '%s', '%s', '%s', '%s' );
+                
+                $result = $wpdb->replace( $table, $data, $format );
+
+                error_log( 'AI Dream Jobs: save_input result=' . $result . ', error=' . $wpdb->last_error );
 
                 if ( $result === false ) {
                     error_log( 'Dream Jobs DB Error (save_input): ' . $wpdb->last_error );
                     return new WP_REST_Response( array(
                         'ok' => false,
-                        'error' => 'Database error'
+                        'error' => 'Database error: ' . $wpdb->last_error
                     ), 500 );
                 }
 
                 return new WP_REST_Response( array(
                     'ok' => true,
-                    'status' => 'in_progress'
+                    'status' => 'in_progress',
+                    'debug' => 'Saved ' . count($jobs) . ' jobs'
                 ), 200 );
             } 
             elseif ( $step === 'back_to_input' ) {
                 // User clicked back - set to not_started
-                $wpdb->update(
+                $result = $wpdb->update(
                     $table,
                     array( 'status' => 'not_started' ),
                     array( 'user_id' => $user_id ),
                     array( '%s' ),
                     array( '%d' )
                 );
+
+                error_log( 'AI Dream Jobs: back_to_input result=' . $result );
 
                 return new WP_REST_Response( array(
                     'ok' => true,
@@ -321,14 +355,20 @@ PROMPT;
                 }
 
                 // Save with completed status
-                $result = $wpdb->replace( $table, array(
+                $data = array(
                     'user_id' => $user_id,
                     'jobs_json' => wp_json_encode( $jobs ),
                     'ranking_json' => wp_json_encode( $ranking ),
                     'analysis' => $analysis,
                     'mbti_type' => $mbti_type,
                     'status' => 'completed'
-                ), array( '%d', '%s', '%s', '%s', '%s', '%s' ) );
+                );
+                
+                $format = array( '%d', '%s', '%s', '%s', '%s', '%s' );
+                
+                $result = $wpdb->replace( $table, $data, $format );
+
+                error_log( 'AI Dream Jobs: generate_analysis result=' . $result . ', error=' . $wpdb->last_error );
 
                 if ( $result === false ) {
                     error_log( 'Dream Jobs DB Error (generate_analysis): ' . $wpdb->last_error );
@@ -345,7 +385,7 @@ PROMPT;
 
             return new WP_REST_Response( array(
                 'ok' => false,
-                'error' => 'Invalid step'
+                'error' => 'Invalid step: ' . $step
             ), 400 );
 
         } catch ( Exception $e ) {

@@ -3,6 +3,8 @@
   const root = document.getElementById("ai-dream-jobs-root");
   if (!root) return;
 
+  console.log('AI Dream Jobs Config:', cfg);
+
   const chatSource = document.getElementById("ai-dream-jobs-chat-source");
 
   let jobs = [];
@@ -37,6 +39,8 @@
 
   async function checkStatus() {
     try {
+      console.log('Checking status at:', cfg.restUrlStatus);
+      
       const res = await fetch(cfg.restUrlStatus + "?_=" + Date.now(), {
         method: 'GET',
         headers: {
@@ -45,6 +49,8 @@
         },
         credentials: 'same-origin'
       });
+
+      console.log('Status response:', res.status, res.statusText);
 
       if (res.ok) {
         const data = await res.json();
@@ -67,6 +73,8 @@
           step = "input";
         }
       } else {
+        const errorText = await res.text();
+        console.error('Status check failed:', res.status, errorText);
         step = "input";
       }
     } catch (err) {
@@ -230,7 +238,9 @@
         nextBtn.disabled = true;
         nextBtn.textContent = "Saving...";
 
-        await fetch(cfg.restUrlSubmit, {
+        console.log('Saving jobs:', jobs);
+
+        const res = await fetch(cfg.restUrlSubmit, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
@@ -243,8 +253,20 @@
             step: 'save_input'
           }),
         });
+
+        const data = await res.json();
+        console.log('Save response:', data);
+
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'Save failed');
+        }
+
       } catch (err) {
         console.error('Save error:', err);
+        alert('Failed to save: ' + err.message);
+        nextBtn.disabled = false;
+        nextBtn.textContent = "Next: Rank my jobs";
+        return;
       }
 
       step = "rank";
@@ -278,7 +300,6 @@
     const actions = el("div", "cq-actions");
     const backBtn = el("button", "cq-btn", "Back");
     backBtn.onclick = async () => {
-      // Notify server that user went back
       try {
         await fetch(cfg.restUrlSubmit, {
           method: "POST",
@@ -326,6 +347,8 @@
           step: 'generate_analysis'
         };
 
+        console.log('Generating analysis:', payload);
+
         const res = await fetch(cfg.restUrlSubmit, {
           method: "POST",
           headers: { 
@@ -337,12 +360,16 @@
         });
 
         const raw = await res.text();
+        console.log('Analysis response (raw):', raw.substring(0, 500));
+        
         let j = null;
         try {
           j = raw ? JSON.parse(raw) : null;
         } catch (e) {
           throw new Error("Server returned non-JSON: " + raw.slice(0, 280));
         }
+
+        console.log('Analysis response (parsed):', j);
 
         if (!res.ok || !j || j.ok !== true) {
           throw new Error((j && j.error) || `${res.status} ${res.statusText}`);
@@ -357,6 +384,7 @@
 
       } catch (err) {
         hideLoadingOverlay(overlay);
+        console.error('Analysis error:', err);
         alert("Saving / AI analysis failed: " + err.message);
         nextBtn.disabled = false;
         nextBtn.textContent = "Next: See AI feedback";
