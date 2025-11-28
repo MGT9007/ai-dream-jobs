@@ -2,16 +2,16 @@
 /**
  * Plugin Name: AI Dream Jobs
  * Description: Students enter 5 dream jobs, rank them, then get AI-powered career feedback & chat. Use shortcode [ai_dream_jobs].
- * Version: 5.0.0
+ * Version: 5.0.1
  * Author: MisterT9007
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class AI_Dream_Jobs {
-    const VERSION      = '5.0.0';
+    const VERSION      = '5.0.1';
     const TABLE        = 'mfsd_dream_jobs';
-    const NONCE_ACTION = 'ai_dream_jobs_nonce';
+    const NONCE_ACTION = 'wp_rest';
 
     public function __construct() {
         register_activation_hook( __FILE__, array( $this, 'on_activate' ) );
@@ -77,7 +77,7 @@ class AI_Dream_Jobs {
         $config = array(
             'restUrlSubmit' => esc_url_raw( rest_url( 'ai-dream-jobs/v1/submit' ) ),
             'restUrlStatus' => esc_url_raw( rest_url( 'ai-dream-jobs/v1/status' ) ),
-            'nonce'         => wp_create_nonce( self::NONCE_ACTION ),
+            'nonce'         => wp_create_nonce( 'wp_rest' ),
             'user'          => is_user_logged_in() ? wp_get_current_user()->user_login : '',
             'email'         => is_user_logged_in() ? wp_get_current_user()->user_email : '',
             'userId'        => $user_id,
@@ -111,10 +111,16 @@ class AI_Dream_Jobs {
         ) );
     }
 
-    public function check_permission() {
+    public function check_permission( WP_REST_Request $request ) {
+        // Check if user is logged in
         if ( ! is_user_logged_in() ) {
             return new WP_Error( 'unauthorized', 'You must be logged in', array( 'status' => 401 ) );
         }
+
+        // WordPress REST API automatically handles nonce verification
+        // via the X-WP-Nonce header when using wp_create_nonce('wp_rest')
+        // No additional verification needed here
+
         return true;
     }
 
@@ -209,12 +215,20 @@ class AI_Dream_Jobs {
                 $wpdb->delete( $table, array( 'user_id' => $user_id ), array( '%d' ) );
 
                 // Insert new entry
-                $wpdb->insert( $table, array(
+                $result = $wpdb->insert( $table, array(
                     'user_id' => $user_id,
                     'jobs_json' => wp_json_encode( $jobs ),
                     'status' => 'in_progress',
                     'mbti_type' => $mbti_type
                 ), array( '%d', '%s', '%s', '%s' ) );
+
+                if ( $result === false ) {
+                    error_log( 'Dream Jobs DB Insert Error: ' . $wpdb->last_error );
+                    return new WP_REST_Response( array(
+                        'ok' => false,
+                        'error' => 'Database error: ' . $wpdb->last_error
+                    ), 500 );
+                }
 
                 return new WP_REST_Response( array(
                     'ok' => true,
@@ -251,8 +265,8 @@ Steve's Solution Mindset principles:
 • "It's nice to be important, but more important to be nice."
 
 Tone: warm, supportive, empowering; never judgmental. Use age-appropriate UK language (12–14).
-Promote self-reflection (“What are you most curious about?”), exploration (“Let’s discover what skills this career uses!”),
-and action (“Try this small next step…”). Avoid direct criticism; offer constructive, growth-focused feedback.
+Promote self-reflection ("What are you most curious about?"), exploration ("Let's discover what skills this career uses!"),
+and action ("Try this small next step…"). Avoid direct criticism; offer constructive, growth-focused feedback.
 
 Keep advice practical, motivational, and aligned with personal development so learners:
                     • explore career interests and pathways,
@@ -307,7 +321,7 @@ PROMPT;
 
             // Insert each job with its rank
             foreach ( $top5 as $rank => $job_title ) {
-                $wpdb->insert( $table, array(
+                $result = $wpdb->insert( $table, array(
                     'user_id' => $user_id,
                     'job_title' => $job_title,
                     'job_rank' => $rank + 1,
@@ -317,6 +331,10 @@ PROMPT;
                     'mbti_type' => $mbti_type,
                     'status' => 'completed'
                 ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s' ) );
+
+                if ( $result === false ) {
+                    error_log( 'Dream Jobs DB Insert Error: ' . $wpdb->last_error );
+                }
             }
 
             return new WP_REST_Response( array(
@@ -328,6 +346,7 @@ PROMPT;
             ), 200 );
 
         } catch ( Exception $e ) {
+            error_log( 'Dream Jobs Submit Error: ' . $e->getMessage() );
             return new WP_REST_Response( array(
                 'ok' => false,
                 'error' => 'Server error: ' . $e->getMessage()
