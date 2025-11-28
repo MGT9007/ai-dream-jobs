@@ -2,15 +2,15 @@
 /**
  * Plugin Name: AI Dream Jobs
  * Description: Students enter 5 dream jobs, rank them, then get AI-powered career feedback & chat. Use shortcode [ai_dream_jobs].
- * Version: 5.1.1
+ * Version: 5.1.2
  * Author: MisterT9007
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class AI_Dream_Jobs {
-    const VERSION      = '5.1.1';
-    const TABLE        = 'ai_dream_jobs_results';
+    const VERSION      = '5.1.2';
+    const TABLE        = 'mfsd_ai_dream_jobs_results';
     const NONCE_ACTION = 'wp_rest';
 
     public function __construct() {
