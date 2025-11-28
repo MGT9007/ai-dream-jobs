@@ -8,7 +8,7 @@
   let jobs = [];
   let ranking = [];
   let resultData = null;
-  let step = "loading"; // Start with loading to check status
+  let step = "loading";
 
   function el(tag, cls, txt) {
     const x = document.createElement(tag);
@@ -17,7 +17,6 @@
     return x;
   }
 
-  // Show loading overlay with spinner
   function showLoadingOverlay() {
     const overlay = el("div", "cq-loading-overlay");
     const spinner = el("div", "cq-spinner");
@@ -36,7 +35,6 @@
     }
   }
 
-  // Check if user has existing data
   async function checkStatus() {
     try {
       const res = await fetch(cfg.restUrlStatus + "?_=" + Date.now(), {
@@ -53,7 +51,6 @@
         console.log('Dream Jobs Status:', data);
         
         if (data.ok && data.status === 'completed' && data.analysis) {
-          // Go straight to results
           resultData = {
             top5: data.ranking || [],
             analysis: data.analysis,
@@ -63,12 +60,10 @@
           jobs = data.jobs || [];
           step = "results";
         } else if (data.ok && data.status === 'in_progress' && data.jobs) {
-          // Resume from ranking
           jobs = data.jobs;
           ranking = data.ranking && data.ranking.length > 0 ? data.ranking : jobs;
           step = "rank";
         } else {
-          // Start fresh
           step = "input";
         }
       } else {
@@ -231,7 +226,6 @@
       jobs = vals.filter((v) => v !== "").slice(0, 5);
       ranking = [...jobs];
 
-      // Save progress
       try {
         nextBtn.disabled = true;
         nextBtn.textContent = "Saving...";
@@ -304,7 +298,6 @@
         nextBtn.disabled = true;
         nextBtn.textContent = "Thinking…";
         
-        // Show spinner overlay
         overlay = showLoadingOverlay();
 
         const payload = {
@@ -337,7 +330,6 @@
 
         resultData = j;
         
-        // Hide overlay before transitioning
         hideLoadingOverlay(overlay);
         
         step = "results";
@@ -355,68 +347,18 @@
     root.replaceChildren(wrap);
   }
 
-  // Parse the analysis text into sections per job
-  function parseAnalysisByJob(analysisText, jobTitles) {
-    const sections = [];
-    
-    // Try to split the analysis by job numbers or titles
-    const lines = analysisText.split('\n');
-    let currentJobIndex = -1;
-    let currentContent = [];
-    
-    for (let line of lines) {
-      // Check if line starts with a job number or contains a job title
-      let foundJobMatch = false;
-      
-      for (let i = 0; i < jobTitles.length; i++) {
-        const jobTitle = jobTitles[i];
-        const jobNum = i + 1;
-        
-        // Check for patterns like "1)", "1.", "## 1", job title in bold, etc.
-        const patterns = [
-          new RegExp(`^#*\\s*${jobNum}[\\)\\.]\\s*`, 'i'),
-          new RegExp(`^#*\\s*${jobNum}\\s+[–-]?\\s*\\*\\*${jobTitle}`, 'i'),
-          new RegExp(`^#*\\s*\\*\\*${jobTitle}\\*\\*`, 'i'),
-        ];
-        
-        if (patterns.some(p => p.test(line))) {
-          // Save previous job's content
-          if (currentJobIndex >= 0 && currentContent.length > 0) {
-            sections[currentJobIndex] = currentContent.join('\n').trim();
-          }
-          
-          currentJobIndex = i;
-          currentContent = [line];
-          foundJobMatch = true;
-          break;
-        }
-      }
-      
-      if (!foundJobMatch && currentJobIndex >= 0) {
-        currentContent.push(line);
-      }
-    }
-    
-    // Save the last job's content
-    if (currentJobIndex >= 0 && currentContent.length > 0) {
-      sections[currentJobIndex] = currentContent.join('\n').trim();
-    }
-    
-    // If we couldn't parse sections, return the full text for each job
-    if (sections.filter(s => s).length === 0) {
-      return jobTitles.map(() => analysisText);
-    }
-    
-    return sections;
-  }
-
-  function createAccordionItem(jobTitle, rank, content, isExpanded = false) {
+  function createAccordionItem(jobTitle, rank, isExpanded = false) {
     const item = el("div", "cq-accordion-item");
     
     const header = el("div", "cq-accordion-header");
-    const icon = el("div", "cq-accordion-icon" + (isExpanded ? " expanded" : ""), "▶");
-    const title = el("div", "cq-accordion-title", jobTitle);
-    const rankBadge = el("div", "cq-accordion-rank", `#${rank}`);
+    const icon = el("div", "cq-accordion-icon" + (isExpanded ? " expanded" : ""));
+    icon.textContent = "▶";
+    
+    const title = el("div", "cq-accordion-title");
+    title.textContent = jobTitle;
+    
+    const rankBadge = el("div", "cq-accordion-rank");
+    rankBadge.textContent = `#${rank}`;
     
     header.appendChild(icon);
     header.appendChild(title);
@@ -424,8 +366,10 @@
     
     const contentDiv = el("div", "cq-accordion-content" + (isExpanded ? " expanded" : ""));
     const body = el("div", "cq-accordion-body");
-    const text = el("div", "cq-job-details", content);
-    body.appendChild(text);
+    
+    // Content will be filled in after creation
+    body.innerHTML = '<p style="color: #999;">Click to expand details...</p>';
+    
     contentDiv.appendChild(body);
     
     // Toggle functionality
@@ -444,7 +388,7 @@
     item.appendChild(header);
     item.appendChild(contentDiv);
     
-    return item;
+    return { item, body };
   }
 
   function renderResults() {
@@ -459,21 +403,6 @@
     const analysis = (resultData && resultData.analysis) || "";
     const mbtiType = resultData && resultData.mbti_type;
 
-    if (top5 && top5.length) {
-      card.appendChild(el("p", "cq-sub", "Here are your dream jobs in order of preference:"));
-      
-      const list = el("ul", "cq-list cq-list-small");
-      top5.forEach((job, i) => {
-        const li = el("li", "cq-item cq-item-static");
-        const rank = el("span", "cq-rankpill", `#${i + 1}`);
-        const label = el("span", "cq-label", job);
-        li.appendChild(rank);
-        li.appendChild(label);
-        list.appendChild(li);
-      });
-      card.appendChild(list);
-    }
-
     if (mbtiType) {
       const mbtiNote = el("p", "cq-mbti-note", 
         "Based on your MBTI personality type (" + mbtiType + "), here's how these careers align with your strengths:"
@@ -483,31 +412,24 @@
 
     // Create accordion with job details
     if (analysis && top5.length) {
-      const jobSections = parseAnalysisByJob(analysis, top5);
+      card.appendChild(el("p", "cq-sub", "Click each career to explore the details:"));
       
       const accordion = el("div", "cq-accordion");
       
       top5.forEach((job, i) => {
-        const jobContent = jobSections[i] || "Details not available.";
         const isFirstJob = i === 0;
-        const accordionItem = createAccordionItem(job, i + 1, jobContent, isFirstJob);
-        accordion.appendChild(accordionItem);
+        const { item, body } = createAccordionItem(job, i + 1, isFirstJob);
+        
+        // Put the full analysis in each accordion
+        const analysisDiv = el("div", "cq-job-details");
+        analysisDiv.textContent = analysis;
+        body.innerHTML = '';
+        body.appendChild(analysisDiv);
+        
+        accordion.appendChild(item);
       });
       
       card.appendChild(accordion);
-      
-      // Add any remaining analysis (comparisons, next steps, etc.)
-      // Look for content after all job sections
-      const remainingAnalysis = analysis.split(/\n---\n|\n\nThen compare|\n\n##\s*📌/i);
-      if (remainingAnalysis.length > 1) {
-        const finalSection = remainingAnalysis[remainingAnalysis.length - 1].trim();
-        if (finalSection) {
-          const analysisBox = el("div", "cq-analysis");
-          const p = el("p", "cq-analysis-text", finalSection);
-          analysisBox.appendChild(p);
-          card.appendChild(analysisBox);
-        }
-      }
     } else if (!analysis) {
       const analysisBox = el("div", "cq-analysis");
       analysisBox.appendChild(
@@ -532,8 +454,6 @@
       card.appendChild(chatWrap);
     }
 
-    // No action buttons on results screen
-
     wrap.appendChild(card);
     root.replaceChildren(wrap);
   }
@@ -550,6 +470,5 @@
     }
   }
 
-  // Start by checking status
   checkStatus();
 })();
