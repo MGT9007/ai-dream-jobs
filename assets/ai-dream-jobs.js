@@ -277,10 +277,30 @@
 
     const actions = el("div", "cq-actions");
     const backBtn = el("button", "cq-btn", "Back");
-    backBtn.onclick = () => {
+    backBtn.onclick = async () => {
+      // Notify server that user went back
+      try {
+        await fetch(cfg.restUrlSubmit, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "X-WP-Nonce": cfg.nonce || ''
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            jobs: jobs,
+            ranking: ranking,
+            step: 'back_to_input'
+          }),
+        });
+      } catch (err) {
+        console.error('Back error:', err);
+      }
+      
       step = "input";
       mount();
     };
+    
     const nextBtn = el("button", "cq-btn", "Next: See AI feedback");
     actions.appendChild(backBtn);
     actions.appendChild(nextBtn);
@@ -359,7 +379,6 @@
     const analysis = (resultData && resultData.analysis) || "";
     const mbtiType = resultData && resultData.mbti_type;
 
-    // Show MBTI note if available
     if (mbtiType) {
       const mbtiNote = el("p", "cq-mbti-note", 
         "Based on your MBTI personality type (" + mbtiType + "), here's your personalized career guidance:"
@@ -367,7 +386,6 @@
       card.appendChild(mbtiNote);
     }
 
-    // Show full AI analysis
     if (analysis) {
       const analysisBox = el("div", "cq-analysis");
       const analysisText = el("div", "cq-analysis-text");
@@ -383,7 +401,6 @@
       card.appendChild(analysisBox);
     }
 
-    // Add chatbot at the bottom
     if (chatSource && chatSource.firstChild) {
       const chatTitle = el("h3", "cq-chat-title", "Chat with an AI careers guide");
       const chatIntro = el("p", "cq-chat-sub",

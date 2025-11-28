@@ -2,15 +2,15 @@
 /**
  * Plugin Name: AI Dream Jobs
  * Description: Students enter 5 dream jobs, rank them, then get AI-powered career feedback & chat. Use shortcode [ai_dream_jobs].
- * Version: 5.0.4
+ * Version: 5.1.0
  * Author: MisterT9007
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class AI_Dream_Jobs {
-    const VERSION      = '5.0.4';
-    const TABLE        = 'mfsd_dream_jobs';
+    const VERSION      = '5.1.0';
+    const TABLE        = 'ai_dream_jobs_results';
     const NONCE_ACTION = 'wp_rest';
 
     public function __construct() {
@@ -28,8 +28,6 @@ class AI_Dream_Jobs {
         $sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             user_id BIGINT UNSIGNED NOT NULL,
-            job_title VARCHAR(255) NULL,
-            job_rank TINYINT NULL,
             jobs_json LONGTEXT NULL,
             ranking_json LONGTEXT NULL,
             analysis LONGTEXT NULL,
@@ -38,7 +36,8 @@ class AI_Dream_Jobs {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             KEY idx_user (user_id),
-            KEY idx_status (status)
+            KEY idx_status (status),
+            UNIQUE KEY idx_user_unique (user_id)
         ) $charset;";
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -112,15 +111,9 @@ class AI_Dream_Jobs {
     }
 
     public function check_permission( WP_REST_Request $request ) {
-        // Check if user is logged in
         if ( ! is_user_logged_in() ) {
             return new WP_Error( 'unauthorized', 'You must be logged in', array( 'status' => 401 ) );
         }
-
-        // WordPress REST API automatically handles nonce verification
-        // via the X-WP-Nonce header when using wp_create_nonce('wp_rest')
-        // No additional verification needed here
-
         return true;
     }
 
@@ -137,9 +130,8 @@ class AI_Dream_Jobs {
 
         $table = $wpdb->prefix . self::TABLE;
 
-        // Check if user has any saved data
         $saved = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM $table WHERE user_id = %d ORDER BY created_at DESC LIMIT 1",
+            "SELECT * FROM $table WHERE user_id = %d LIMIT 1",
             $user_id
         ), ARRAY_A );
 
@@ -155,7 +147,6 @@ class AI_Dream_Jobs {
         $status = $saved['status'];
         $analysis = $saved['analysis'];
 
-        // Determine actual status
         if ( $status === 'completed' && $analysis ) {
             return new WP_REST_Response( array(
                 'ok' => true,
@@ -165,7 +156,7 @@ class AI_Dream_Jobs {
                 'analysis' => $analysis,
                 'mbti_type' => $saved['mbti_type']
             ), 200 );
-        } elseif ( ! empty( $jobs ) && count( $jobs ) > 0 ) {
+        } elseif ( $status === 'in_progress' && ! empty( $jobs ) ) {
             return new WP_REST_Response( array(
                 'ok' => true,
                 'status' => 'in_progress',
@@ -198,7 +189,7 @@ class AI_Dream_Jobs {
 
             $table = $wpdb->prefix . self::TABLE;
 
-            // Get latest MBTI type for this user
+            // Get latest MBTI type
             $mbti_table = $wpdb->prefix . 'mfsd_mbti_results';
             $mbti_type = null;
             
@@ -209,24 +200,22 @@ class AI_Dream_Jobs {
                 ) );
             }
 
-            // If step is "save_input", just save the jobs and mark in_progress
+            // Handle different steps
             if ( $step === 'save_input' ) {
-                // Delete any previous entries
-                $wpdb->delete( $table, array( 'user_id' => $user_id ), array( '%d' ) );
-
-                // Insert new entry
-                $result = $wpdb->insert( $table, array(
+                // Save jobs with in_progress status
+                $result = $wpdb->replace( $table, array(
                     'user_id' => $user_id,
                     'jobs_json' => wp_json_encode( $jobs ),
+                    'ranking_json' => wp_json_encode( $ranking ),
                     'status' => 'in_progress',
                     'mbti_type' => $mbti_type
-                ), array( '%d', '%s', '%s', '%s' ) );
+                ), array( '%d', '%s', '%s', '%s', '%s' ) );
 
                 if ( $result === false ) {
-                    error_log( 'Dream Jobs DB Insert Error: ' . $wpdb->last_error );
+                    error_log( 'Dream Jobs DB Error (save_input): ' . $wpdb->last_error );
                     return new WP_REST_Response( array(
                         'ok' => false,
-                        'error' => 'Database error: ' . $wpdb->last_error
+                        'error' => 'Database error'
                     ), 500 );
                 }
 
@@ -234,17 +223,32 @@ class AI_Dream_Jobs {
                     'ok' => true,
                     'status' => 'in_progress'
                 ), 200 );
+            } 
+            elseif ( $step === 'back_to_input' ) {
+                // User clicked back - set to not_started
+                $wpdb->update(
+                    $table,
+                    array( 'status' => 'not_started' ),
+                    array( 'user_id' => $user_id ),
+                    array( '%s' ),
+                    array( '%d' )
+                );
+
+                return new WP_REST_Response( array(
+                    'ok' => true,
+                    'status' => 'not_started'
+                ), 200 );
             }
+            elseif ( $step === 'generate_analysis' ) {
+                // Generate AI analysis and mark completed
+                $top5 = array_slice( !empty($ranking) ? $ranking : $jobs, 0, 5 );
+                $analysis = '';
 
-            $top5 = array_slice( !empty($ranking) ? $ranking : $jobs, 0, 5 );
-            $analysis = '';
+                if ( isset( $GLOBALS['mwai'] ) && ! empty( $top5 ) ) {
+                    try {
+                        $mwai = $GLOBALS['mwai'];
 
-            // Generate AI analysis with MBTI integration
-            if ( isset( $GLOBALS['mwai'] ) && ! empty( $top5 ) ) {
-                try {
-                    $mwai = $GLOBALS['mwai'];
-
-                    $instructions = <<<'PROMPT'
+                        $instructions = <<<'PROMPT'
 You are a friendly UK careers adviser and motivational coach for learners aged 12–14, guiding them to explore their future selves through curiosity, self-belief, and positive action.
 
 All advice must reflect Steve Solutions principles, promoting resilience, growth, and a solutions mindset.
@@ -269,81 +273,80 @@ Promote self-reflection ("What are you most curious about?"), exploration ("Let'
 and action ("Try this small next step…"). Avoid direct criticism; offer constructive, growth-focused feedback.
 
 Keep advice practical, motivational, and aligned with personal development so learners:
-                    • explore career interests and pathways,
-                    • build confidence in their abilities and choices,
-                    • learn to problem-solve with optimism and persistence,
-                    • develop the character and mindset to thrive in life, education, and work.
+• explore career interests and pathways,
+• build confidence in their abilities and choices,
+• learn to problem-solve with optimism and persistence,
+• develop the character and mindset to thrive in life, education, and work.
 PROMPT;
 
-                    $prompt  = $instructions . "\n\n";
-                    
-                    if ( $mbti_type ) {
-                        $prompt .= "The student's MBTI personality type is: $mbti_type\n\n";
+                        $prompt  = $instructions . "\n\n";
+                        
+                        if ( $mbti_type ) {
+                            $prompt .= "The student's MBTI personality type is: $mbti_type\n\n";
+                        }
+
+                        $prompt .= "Their dream jobs are:\n";
+                        foreach ( $top5 as $i => $job ) {
+                            $prompt .= ( $i + 1 ) . ") $job\n";
+                        }
+
+                        $prompt .= "\nFor each job, provide:\n";
+                        $prompt .= "• 3-4 key skills\n";
+                        $prompt .= "• Typical UK salary range (entry → experienced)\n";
+                        $prompt .= "• Common UK qualifications/routes (GCSEs, A-levels, T Levels, apprenticeships)\n";
+                        $prompt .= "• 3-4 helpful personal traits\n";
+                        
+                        if ( $mbti_type ) {
+                            $prompt .= "• How the $mbti_type personality type aligns with this career (be specific about strengths)\n";
+                        }
+                        
+                        $prompt .= "• Brief UK employment outlook\n\n";
+
+                        $prompt .= "Then compare the five jobs: what do they have in common, and how are they different?\n";
+                        
+                        if ( $mbti_type ) {
+                            $prompt .= "\nBased on their $mbti_type type, which of these careers might be the natural best fit and why? ";
+                            $prompt .= "Explain how $mbti_type traits (like " . $this->get_mbti_traits( $mbti_type ) . ") ";
+                            $prompt .= "connect to these career choices.\n";
+                        }
+                        
+                        $prompt .= "\nFinish with an encouraging paragraph suggesting concrete next steps they could take this month.";
+
+                        $analysis = $mwai->simpleTextQuery( $prompt );
+
+                    } catch ( Exception $e ) {
+                        error_log( 'AI Dream Jobs analysis failed: ' . $e->getMessage() );
+                        $analysis = '';
                     }
-
-                    $prompt .= "Their dream jobs are:\n";
-                    foreach ( $top5 as $i => $job ) {
-                        $prompt .= ( $i + 1 ) . ") $job\n";
-                    }
-
-                    $prompt .= "\nFor each job, provide:\n";
-                    $prompt .= "• 3-4 key skills\n";
-                    $prompt .= "• Typical UK salary range (entry → experienced)\n";
-                    $prompt .= "• Common UK qualifications/routes (GCSEs, A-levels, T Levels, apprenticeships)\n";
-                    $prompt .= "• 3-4 helpful personal traits\n";
-                    
-                    if ( $mbti_type ) {
-                        $prompt .= "• How the $mbti_type personality type aligns with this career (be specific about strengths)\n";
-                    }
-                    
-                    $prompt .= "• Brief UK employment outlook\n\n";
-
-                    $prompt .= "Then compare the five jobs: what do they have in common, and how are they different?\n";
-                    
-                    if ( $mbti_type ) {
-                        $prompt .= "\nBased on their $mbti_type type, which of these careers might be the natural best fit and why? ";
-                        $prompt .= "Explain how $mbti_type traits (like " . $this->get_mbti_traits( $mbti_type ) . ") ";
-                        $prompt .= "connect to these career choices.\n";
-                    }
-                    
-                    $prompt .= "\nFinish with an encouraging paragraph suggesting concrete next steps they could take this month.";
-
-                    $analysis = $mwai->simpleTextQuery( $prompt );
-
-                } catch ( Exception $e ) {
-                    error_log( 'AI Dream Jobs analysis failed: ' . $e->getMessage() );
-                    $analysis = '';
                 }
-            }
 
-            // Delete old entries and save new complete entry
-            $wpdb->delete( $table, array( 'user_id' => $user_id ), array( '%d' ) );
-
-            // Insert each job with its rank
-            foreach ( $top5 as $rank => $job_title ) {
-                $result = $wpdb->insert( $table, array(
+                // Save with completed status
+                $result = $wpdb->replace( $table, array(
                     'user_id' => $user_id,
-                    'job_title' => $job_title,
-                    'job_rank' => $rank + 1,
                     'jobs_json' => wp_json_encode( $jobs ),
                     'ranking_json' => wp_json_encode( $ranking ),
                     'analysis' => $analysis,
                     'mbti_type' => $mbti_type,
                     'status' => 'completed'
-                ), array( '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s' ) );
+                ), array( '%d', '%s', '%s', '%s', '%s', '%s' ) );
 
                 if ( $result === false ) {
-                    error_log( 'Dream Jobs DB Insert Error: ' . $wpdb->last_error );
+                    error_log( 'Dream Jobs DB Error (generate_analysis): ' . $wpdb->last_error );
                 }
+
+                return new WP_REST_Response( array(
+                    'ok' => true,
+                    'top5' => $top5,
+                    'analysis' => $analysis,
+                    'mbti_type' => $mbti_type,
+                    'status' => 'completed'
+                ), 200 );
             }
 
             return new WP_REST_Response( array(
-                'ok' => true,
-                'top5' => $top5,
-                'analysis' => $analysis,
-                'mbti_type' => $mbti_type,
-                'status' => 'completed'
-            ), 200 );
+                'ok' => false,
+                'error' => 'Invalid step'
+            ), 400 );
 
         } catch ( Exception $e ) {
             error_log( 'Dream Jobs Submit Error: ' . $e->getMessage() );
