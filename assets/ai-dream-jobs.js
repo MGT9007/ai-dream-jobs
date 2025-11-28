@@ -5,12 +5,10 @@
 
   const chatSource = document.getElementById("ai-dream-jobs-chat-source");
 
-  let jobs = [];          // raw 10 jobs entered
-  let ranking = [];       // ranked order
-  let resultData = null;  // { top3, analysis, id }
-  let step = "input";     // "input" -> "rank" -> "results"
-
-  // ---------- Small helper ----------
+  let jobs = [];
+  let ranking = [];
+  let resultData = null;
+  let step = "loading"; // Start with loading to check status
 
   function el(tag, cls, txt) {
     const x = document.createElement(tag);
@@ -19,7 +17,51 @@
     return x;
   }
 
-  // ---------- Drag & Drop for ranking ----------
+  // Check if user has existing data
+  async function checkStatus() {
+    try {
+      const res = await fetch(cfg.restUrlStatus + "?_=" + Date.now(), {
+        method: 'GET',
+        headers: {
+          'X-WP-Nonce': cfg.nonce || '',
+          'Accept': 'application/json'
+        },
+        credentials: 'same-origin'
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log('Dream Jobs Status:', data);
+        
+        if (data.ok && data.status === 'completed' && data.analysis) {
+          // Go straight to results
+          resultData = {
+            top5: data.ranking || [],
+            analysis: data.analysis,
+            mbti_type: data.mbti_type
+          };
+          ranking = data.ranking || [];
+          jobs = data.jobs || [];
+          step = "results";
+        } else if (data.ok && data.status === 'in_progress' && data.jobs) {
+          // Resume from ranking
+          jobs = data.jobs;
+          ranking = data.ranking && data.ranking.length > 0 ? data.ranking : jobs;
+          step = "rank";
+        } else {
+          // Start fresh
+          step = "input";
+        }
+      } else {
+        step = "input";
+      }
+    } catch (err) {
+      console.error('Status check error:', err);
+      step = "input";
+    }
+
+    mount();
+  }
 
   function makeItem(job) {
     const li = el("li", "cq-item");
@@ -39,7 +81,6 @@
   function enableDnD(list) {
     let dragEl = null;
     let ghost = null;
-    let startY = 0;
 
     function updatePills() {
       const items = Array.from(list.querySelectorAll(".cq-item"));
@@ -74,7 +115,6 @@
       e.preventDefault();
       dragEl = targetItem;
       dragEl.classList.add("dragging");
-      startY = e.clientY;
 
       ghost = document.createElement("div");
       ghost.className = "cq-ghost";
@@ -119,12 +159,8 @@
     }
 
     list.addEventListener("pointerdown", onPointerDown);
-
-    // initial pill labels
     updatePills();
   }
-
-  // ---------- Screen 1: enter 5 dream jobs ----------
 
   function renderInput() {
     const wrap = el("div", "cq-wrap");
@@ -135,11 +171,8 @@
     card.appendChild(head);
 
     card.appendChild(
-      el(
-        "p",
-        "cq-sub",
-        "Type up to 5 jobs you’d really love to do one day. Don’t overthink it – just write what excites you."
-      )
+      el("p", "cq-sub",
+        "Type up to 5 jobs you'd really love to do one day. Don't overthink it – just write what excites you.")
     );
 
     const inputsWrap = el("div", "cq-inputs-vertical");
@@ -165,11 +198,8 @@
     actions.appendChild(nextBtn);
     card.appendChild(actions);
 
-    // validation – require 5 non-empty entries
     function updateCanProceed() {
-      const vals = Array.from(
-        inputsWrap.querySelectorAll("input")
-      ).map((i) => i.value.trim());
+      const vals = Array.from(inputsWrap.querySelectorAll("input")).map((i) => i.value.trim());
       const filled = vals.filter((v) => v !== "");
       nextBtn.disabled = filled.length < 5;
     }
@@ -177,12 +207,33 @@
     inputsWrap.addEventListener("input", updateCanProceed);
     updateCanProceed();
 
-    nextBtn.onclick = () => {
-      const vals = Array.from(
-        inputsWrap.querySelectorAll("input")
-      ).map((i) => i.value.trim());
+    nextBtn.onclick = async () => {
+      const vals = Array.from(inputsWrap.querySelectorAll("input")).map((i) => i.value.trim());
       jobs = vals.filter((v) => v !== "").slice(0, 5);
       ranking = [...jobs];
+
+      // Save progress
+      try {
+        nextBtn.disabled = true;
+        nextBtn.textContent = "Saving...";
+
+        await fetch(cfg.restUrlSubmit, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "X-WP-Nonce": cfg.nonce || ''
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            jobs: jobs,
+            ranking: ranking,
+            step: 'save_input'
+          }),
+        });
+      } catch (err) {
+        console.error('Save error:', err);
+      }
+
       step = "rank";
       mount();
     };
@@ -190,8 +241,6 @@
     wrap.appendChild(card);
     root.replaceChildren(wrap);
   }
-
-  // ---------- Screen 2: drag-to-rank ----------
 
   function renderRank() {
     const wrap = el("div", "cq-wrap");
@@ -202,11 +251,8 @@
     card.appendChild(head);
 
     card.appendChild(
-      el(
-        "p",
-        "cq-sub",
-        "Drag the jobs so the one you’d most love to do is at the top, and the least appealing is at the bottom."
-      )
+      el("p", "cq-sub",
+        "Drag the jobs so the one you'd most love to do is at the top, and the least appealing is at the bottom.")
     );
 
     const list = el("ul", "cq-list");
@@ -234,57 +280,51 @@
       ranking = order;
 
       try {
-  nextBtn.disabled = true;
-  nextBtn.textContent = "Thinking…";
+        nextBtn.disabled = true;
+        nextBtn.textContent = "Thinking…";
 
-  const payload = {
-    nonce: cfg.nonce || "",
-    name: cfg.user || "",
-    email: cfg.email || "",
-    jobs: jobs,
-    ranking: ranking,
-  };
+        const payload = {
+          jobs: jobs,
+          ranking: ranking,
+          step: 'generate_analysis'
+        };
 
-  const res = await fetch(cfg.restUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+        const res = await fetch(cfg.restUrlSubmit, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "X-WP-Nonce": cfg.nonce || ''
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
 
-  // Read as text first — helps when PHP sends HTML errors or warnings
-  const raw = await res.text();
-  let j = null;
-  try {
-    j = raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    throw new Error(
-      `Server returned non-JSON (${res.status}): ` +
-      raw.slice(0, 280)
-    );
-  }
+        const raw = await res.text();
+        let j = null;
+        try {
+          j = raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          throw new Error("Server returned non-JSON: " + raw.slice(0, 280));
+        }
 
-  if (!res.ok || !j || j.ok !== true) {
-    throw new Error((j && j.error) || `${res.status} ${res.statusText}`);
-  }
+        if (!res.ok || !j || j.ok !== true) {
+          throw new Error((j && j.error) || `${res.status} ${res.statusText}`);
+        }
 
-  resultData = j;
-  step = "results";
-  mount();
+        resultData = j;
+        step = "results";
+        mount();
 
-} catch (err) {
-  alert("Saving / AI analysis failed: " + err.message);
-} finally {
-  nextBtn.disabled = false;
-  nextBtn.textContent = "Next: See AI feedback";
-}
-
+      } catch (err) {
+        alert("Saving / AI analysis failed: " + err.message);
+        nextBtn.disabled = false;
+        nextBtn.textContent = "Next: See AI feedback";
+      }
     };
 
     wrap.appendChild(card);
     root.replaceChildren(wrap);
   }
-
-  // ---------- Screen 3: AI feedback + chat ----------
 
   function renderResults() {
     const wrap = el("div", "cq-wrap");
@@ -296,8 +336,8 @@
 
     const top5 = (resultData && resultData.top5) || ranking.slice(0, 5);
     const analysis = (resultData && resultData.analysis) || "";
+    const mbtiType = resultData && resultData.mbti_type;
 
-    // Show the student’s top 5
     if (top5 && top5.length) {
       const list = el("ul", "cq-list cq-list-small");
       top5.forEach((job, i) => {
@@ -308,48 +348,35 @@
         li.appendChild(label);
         list.appendChild(li);
       });
-      card.appendChild(
-        el(
-          "p",
-          "cq-sub",
-          "Here are your dream jobs:"
-        )
-      );
+      card.appendChild(el("p", "cq-sub", "Here are your dream jobs:"));
       card.appendChild(list);
     }
 
-    // AI explanation text
+    if (mbtiType) {
+      const mbtiNote = el("p", "cq-mbti-note", 
+        "Based on your MBTI personality type (" + mbtiType + "), here's how these careers align with your strengths:"
+      );
+      card.appendChild(mbtiNote);
+    }
+
     const analysisBox = el("div", "cq-analysis");
     if (analysis) {
       const p = el("p", "cq-analysis-text", analysis);
       analysisBox.appendChild(p);
     } else {
       analysisBox.appendChild(
-        el(
-          "p",
-          "cq-analysis-text",
-          "We couldn’t fetch AI feedback right now, but you can still use the chat below to ask questions about your jobs."
-        )
+        el("p", "cq-analysis-text",
+          "We couldn't fetch AI feedback right now, but you can still use the chat below to ask questions about your jobs.")
       );
     }
     card.appendChild(analysisBox);
 
-        // AI chat – move the already-rendered chatbot into this card
     if (chatSource && chatSource.firstChild) {
-      const chatTitle = el(
-        "h3",
-        "cq-chat-title",
-        "Chat with an AI careers guide"
-      );
-      const chatIntro = el(
-        "p",
-        "cq-chat-sub",
-        "Ask questions about these jobs, what skills they use day-to-day, or how you could start exploring them."
-      );
+      const chatTitle = el("h3", "cq-chat-title", "Chat with an AI careers guide");
+      const chatIntro = el("p", "cq-chat-sub",
+        "Ask questions about these jobs, what skills they use day-to-day, or how you could start exploring them.");
       const chatWrap = el("div", "cq-chatwrap");
 
-      // Move all children from the hidden source container into our wrap.
-      // This keeps AI Engine's event handlers intact.
       while (chatSource.firstChild) {
         chatWrap.appendChild(chatSource.firstChild);
       }
@@ -359,18 +386,36 @@
       card.appendChild(chatWrap);
     }
 
+    const actions = el("div", "cq-actions");
+    const restartBtn = el("button", "cq-btn", "Start Over");
+    restartBtn.onclick = () => {
+      if (confirm("Are you sure you want to start over? This will reset your current choices.")) {
+        jobs = [];
+        ranking = [];
+        resultData = null;
+        step = "input";
+        mount();
+      }
+    };
+    actions.appendChild(restartBtn);
+    card.appendChild(actions);
 
     wrap.appendChild(card);
     root.replaceChildren(wrap);
   }
 
-  // ---------- Mount ----------
-
   function mount() {
-    if (step === "input") renderInput();
-    else if (step === "rank") renderRank();
-    else renderResults();
+    if (step === "loading") {
+      root.textContent = "Loading...";
+    } else if (step === "input") {
+      renderInput();
+    } else if (step === "rank") {
+      renderRank();
+    } else {
+      renderResults();
+    }
   }
 
-  mount();
+  // Start by checking status
+  checkStatus();
 })();

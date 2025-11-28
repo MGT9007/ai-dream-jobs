@@ -50,7 +50,7 @@
   margin: 8px 0;
   background: #fff;
   cursor: grab;
-  touch-action: none; /* helps on mobile */
+  touch-action: none;
 }
 
 .cq-item.dragging {
@@ -110,7 +110,6 @@
 }
 
 /* Input screen */
-
 .cq-inputs-vertical {
   display: flex;
   flex-direction: column;
@@ -132,8 +131,19 @@
   font-size: 14px;
 }
 
-/* Results & AI analysis */
+/* MBTI personality note */
+.cq-mbti-note {
+  background: #e8f4fd;
+  border-left: 4px solid #4a90e2;
+  padding: 12px 14px;
+  border-radius: 6px;
+  margin: 12px 0;
+  font-size: 14px;
+  color: #2c3e50;
+  font-weight: 500;
+}
 
+/* Results & AI analysis */
 .cq-analysis {
   margin-top: 14px;
 }
@@ -162,7 +172,7 @@
   padding-top: 10px;
 }
 
-/* Old table styles kept for compatibility if needed */
+/* Old table styles kept for compatibility */
 .cq-results {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px,1fr));
