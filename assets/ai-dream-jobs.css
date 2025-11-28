@@ -143,6 +143,120 @@
   font-weight: 500;
 }
 
+/* Loading overlay - Apple style spinner */
+.cq-loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.cq-spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid #f3f3f3;
+  border-top: 5px solid #3498db;
+  border-radius: 50%;
+  animation: cq-spin 1s linear infinite;
+}
+
+@keyframes cq-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.cq-loading-text {
+  color: white;
+  font-size: 18px;
+  margin-top: 20px;
+  font-weight: 500;
+}
+
+/* Accordion for job analysis */
+.cq-accordion {
+  margin-top: 16px;
+}
+
+.cq-accordion-item {
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.cq-accordion-header {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  background: #fafafa;
+  transition: background 0.2s;
+  user-select: none;
+}
+
+.cq-accordion-header:hover {
+  background: #f0f0f0;
+}
+
+.cq-accordion-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: transform 0.3s;
+  color: #666;
+}
+
+.cq-accordion-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.cq-accordion-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 15px;
+  color: #333;
+}
+
+.cq-accordion-rank {
+  min-width: 50px;
+  text-align: center;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #e8f4fd;
+  color: #4a90e2;
+  font-weight: 600;
+}
+
+.cq-accordion-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+}
+
+.cq-accordion-content.expanded {
+  max-height: 2000px;
+  transition: max-height 0.5s ease-in;
+}
+
+.cq-accordion-body {
+  padding: 16px;
+  border-top: 1px solid #e5e5e5;
+  background: #fff;
+}
+
 /* Results & AI analysis */
 .cq-analysis {
   margin-top: 14px;
@@ -150,9 +264,16 @@
 
 .cq-analysis-text {
   white-space: pre-wrap;
-  line-height: 1.5;
+  line-height: 1.6;
   font-size: 14px;
   color: #333;
+}
+
+.cq-job-details {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  font-size: 14px;
+  color: #444;
 }
 
 .cq-chat-title {

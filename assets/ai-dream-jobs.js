@@ -17,6 +17,25 @@
     return x;
   }
 
+  // Show loading overlay with spinner
+  function showLoadingOverlay() {
+    const overlay = el("div", "cq-loading-overlay");
+    const spinner = el("div", "cq-spinner");
+    const text = el("div", "cq-loading-text", "Generating your career analysis...");
+    
+    overlay.appendChild(spinner);
+    overlay.appendChild(text);
+    document.body.appendChild(overlay);
+    
+    return overlay;
+  }
+
+  function hideLoadingOverlay(overlay) {
+    if (overlay && overlay.parentNode) {
+      overlay.parentNode.removeChild(overlay);
+    }
+  }
+
   // Check if user has existing data
   async function checkStatus() {
     try {
@@ -279,9 +298,14 @@
       );
       ranking = order;
 
+      let overlay = null;
+
       try {
         nextBtn.disabled = true;
         nextBtn.textContent = "Thinking…";
+        
+        // Show spinner overlay
+        overlay = showLoadingOverlay();
 
         const payload = {
           jobs: jobs,
@@ -312,10 +336,15 @@
         }
 
         resultData = j;
+        
+        // Hide overlay before transitioning
+        hideLoadingOverlay(overlay);
+        
         step = "results";
         mount();
 
       } catch (err) {
+        hideLoadingOverlay(overlay);
         alert("Saving / AI analysis failed: " + err.message);
         nextBtn.disabled = false;
         nextBtn.textContent = "Next: See AI feedback";
@@ -324,6 +353,98 @@
 
     wrap.appendChild(card);
     root.replaceChildren(wrap);
+  }
+
+  // Parse the analysis text into sections per job
+  function parseAnalysisByJob(analysisText, jobTitles) {
+    const sections = [];
+    
+    // Try to split the analysis by job numbers or titles
+    const lines = analysisText.split('\n');
+    let currentJobIndex = -1;
+    let currentContent = [];
+    
+    for (let line of lines) {
+      // Check if line starts with a job number or contains a job title
+      let foundJobMatch = false;
+      
+      for (let i = 0; i < jobTitles.length; i++) {
+        const jobTitle = jobTitles[i];
+        const jobNum = i + 1;
+        
+        // Check for patterns like "1)", "1.", "## 1", job title in bold, etc.
+        const patterns = [
+          new RegExp(`^#*\\s*${jobNum}[\\)\\.]\\s*`, 'i'),
+          new RegExp(`^#*\\s*${jobNum}\\s+[–-]?\\s*\\*\\*${jobTitle}`, 'i'),
+          new RegExp(`^#*\\s*\\*\\*${jobTitle}\\*\\*`, 'i'),
+        ];
+        
+        if (patterns.some(p => p.test(line))) {
+          // Save previous job's content
+          if (currentJobIndex >= 0 && currentContent.length > 0) {
+            sections[currentJobIndex] = currentContent.join('\n').trim();
+          }
+          
+          currentJobIndex = i;
+          currentContent = [line];
+          foundJobMatch = true;
+          break;
+        }
+      }
+      
+      if (!foundJobMatch && currentJobIndex >= 0) {
+        currentContent.push(line);
+      }
+    }
+    
+    // Save the last job's content
+    if (currentJobIndex >= 0 && currentContent.length > 0) {
+      sections[currentJobIndex] = currentContent.join('\n').trim();
+    }
+    
+    // If we couldn't parse sections, return the full text for each job
+    if (sections.filter(s => s).length === 0) {
+      return jobTitles.map(() => analysisText);
+    }
+    
+    return sections;
+  }
+
+  function createAccordionItem(jobTitle, rank, content, isExpanded = false) {
+    const item = el("div", "cq-accordion-item");
+    
+    const header = el("div", "cq-accordion-header");
+    const icon = el("div", "cq-accordion-icon" + (isExpanded ? " expanded" : ""), "▶");
+    const title = el("div", "cq-accordion-title", jobTitle);
+    const rankBadge = el("div", "cq-accordion-rank", `#${rank}`);
+    
+    header.appendChild(icon);
+    header.appendChild(title);
+    header.appendChild(rankBadge);
+    
+    const contentDiv = el("div", "cq-accordion-content" + (isExpanded ? " expanded" : ""));
+    const body = el("div", "cq-accordion-body");
+    const text = el("div", "cq-job-details", content);
+    body.appendChild(text);
+    contentDiv.appendChild(body);
+    
+    // Toggle functionality
+    header.onclick = () => {
+      const isCurrentlyExpanded = icon.classList.contains("expanded");
+      
+      if (isCurrentlyExpanded) {
+        icon.classList.remove("expanded");
+        contentDiv.classList.remove("expanded");
+      } else {
+        icon.classList.add("expanded");
+        contentDiv.classList.add("expanded");
+      }
+    };
+    
+    item.appendChild(header);
+    item.appendChild(contentDiv);
+    
+    return item;
   }
 
   function renderResults() {
@@ -339,6 +460,8 @@
     const mbtiType = resultData && resultData.mbti_type;
 
     if (top5 && top5.length) {
+      card.appendChild(el("p", "cq-sub", "Here are your dream jobs in order of preference:"));
+      
       const list = el("ul", "cq-list cq-list-small");
       top5.forEach((job, i) => {
         const li = el("li", "cq-item cq-item-static");
@@ -348,7 +471,6 @@
         li.appendChild(label);
         list.appendChild(li);
       });
-      card.appendChild(el("p", "cq-sub", "Here are your dream jobs:"));
       card.appendChild(list);
     }
 
@@ -359,17 +481,41 @@
       card.appendChild(mbtiNote);
     }
 
-    const analysisBox = el("div", "cq-analysis");
-    if (analysis) {
-      const p = el("p", "cq-analysis-text", analysis);
-      analysisBox.appendChild(p);
-    } else {
+    // Create accordion with job details
+    if (analysis && top5.length) {
+      const jobSections = parseAnalysisByJob(analysis, top5);
+      
+      const accordion = el("div", "cq-accordion");
+      
+      top5.forEach((job, i) => {
+        const jobContent = jobSections[i] || "Details not available.";
+        const isFirstJob = i === 0;
+        const accordionItem = createAccordionItem(job, i + 1, jobContent, isFirstJob);
+        accordion.appendChild(accordionItem);
+      });
+      
+      card.appendChild(accordion);
+      
+      // Add any remaining analysis (comparisons, next steps, etc.)
+      // Look for content after all job sections
+      const remainingAnalysis = analysis.split(/\n---\n|\n\nThen compare|\n\n##\s*📌/i);
+      if (remainingAnalysis.length > 1) {
+        const finalSection = remainingAnalysis[remainingAnalysis.length - 1].trim();
+        if (finalSection) {
+          const analysisBox = el("div", "cq-analysis");
+          const p = el("p", "cq-analysis-text", finalSection);
+          analysisBox.appendChild(p);
+          card.appendChild(analysisBox);
+        }
+      }
+    } else if (!analysis) {
+      const analysisBox = el("div", "cq-analysis");
       analysisBox.appendChild(
         el("p", "cq-analysis-text",
           "We couldn't fetch AI feedback right now, but you can still use the chat below to ask questions about your jobs.")
       );
+      card.appendChild(analysisBox);
     }
-    card.appendChild(analysisBox);
 
     if (chatSource && chatSource.firstChild) {
       const chatTitle = el("h3", "cq-chat-title", "Chat with an AI careers guide");
@@ -386,19 +532,7 @@
       card.appendChild(chatWrap);
     }
 
-    const actions = el("div", "cq-actions");
-    const restartBtn = el("button", "cq-btn", "Start Over");
-    restartBtn.onclick = () => {
-      if (confirm("Are you sure you want to start over? This will reset your current choices.")) {
-        jobs = [];
-        ranking = [];
-        resultData = null;
-        step = "input";
-        mount();
-      }
-    };
-    actions.appendChild(restartBtn);
-    card.appendChild(actions);
+    // No action buttons on results screen
 
     wrap.appendChild(card);
     root.replaceChildren(wrap);
