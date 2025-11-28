@@ -347,90 +347,34 @@
     root.replaceChildren(wrap);
   }
 
-  function createAccordionItem(jobTitle, rank, isExpanded = false) {
-    const item = el("div", "cq-accordion-item");
-    
-    const header = el("div", "cq-accordion-header");
-    const icon = el("div", "cq-accordion-icon" + (isExpanded ? " expanded" : ""));
-    icon.textContent = "▶";
-    
-    const title = el("div", "cq-accordion-title");
-    title.textContent = jobTitle;
-    
-    const rankBadge = el("div", "cq-accordion-rank");
-    rankBadge.textContent = `#${rank}`;
-    
-    header.appendChild(icon);
-    header.appendChild(title);
-    header.appendChild(rankBadge);
-    
-    const contentDiv = el("div", "cq-accordion-content" + (isExpanded ? " expanded" : ""));
-    const body = el("div", "cq-accordion-body");
-    
-    // Content will be filled in after creation
-    body.innerHTML = '<p style="color: #999;">Click to expand details...</p>';
-    
-    contentDiv.appendChild(body);
-    
-    // Toggle functionality
-    header.onclick = () => {
-      const isCurrentlyExpanded = icon.classList.contains("expanded");
-      
-      if (isCurrentlyExpanded) {
-        icon.classList.remove("expanded");
-        contentDiv.classList.remove("expanded");
-      } else {
-        icon.classList.add("expanded");
-        contentDiv.classList.add("expanded");
-      }
-    };
-    
-    item.appendChild(header);
-    item.appendChild(contentDiv);
-    
-    return { item, body };
-  }
-
   function renderResults() {
     const wrap = el("div", "cq-wrap");
     const card = el("div", "cq-card");
 
     const head = el("div", "cq-header");
-    head.appendChild(el("h2", "cq-title", "Your dream jobs – and what they say about you"));
+    head.appendChild(el("h2", "cq-title", "Your Career Analysis"));
     card.appendChild(head);
 
     const top5 = (resultData && resultData.top5) || ranking.slice(0, 5);
     const analysis = (resultData && resultData.analysis) || "";
     const mbtiType = resultData && resultData.mbti_type;
 
+    // Show MBTI note if available
     if (mbtiType) {
       const mbtiNote = el("p", "cq-mbti-note", 
-        "Based on your MBTI personality type (" + mbtiType + "), here's how these careers align with your strengths:"
+        "Based on your MBTI personality type (" + mbtiType + "), here's your personalized career guidance:"
       );
       card.appendChild(mbtiNote);
     }
 
-    // Create accordion with job details
-    if (analysis && top5.length) {
-      card.appendChild(el("p", "cq-sub", "Click each career to explore the details:"));
-      
-      const accordion = el("div", "cq-accordion");
-      
-      top5.forEach((job, i) => {
-        const isFirstJob = i === 0;
-        const { item, body } = createAccordionItem(job, i + 1, isFirstJob);
-        
-        // Put the full analysis in each accordion
-        const analysisDiv = el("div", "cq-job-details");
-        analysisDiv.textContent = analysis;
-        body.innerHTML = '';
-        body.appendChild(analysisDiv);
-        
-        accordion.appendChild(item);
-      });
-      
-      card.appendChild(accordion);
-    } else if (!analysis) {
+    // Show full AI analysis
+    if (analysis) {
+      const analysisBox = el("div", "cq-analysis");
+      const analysisText = el("div", "cq-analysis-text");
+      analysisText.textContent = analysis;
+      analysisBox.appendChild(analysisText);
+      card.appendChild(analysisBox);
+    } else {
       const analysisBox = el("div", "cq-analysis");
       analysisBox.appendChild(
         el("p", "cq-analysis-text",
@@ -439,10 +383,11 @@
       card.appendChild(analysisBox);
     }
 
+    // Add chatbot at the bottom
     if (chatSource && chatSource.firstChild) {
       const chatTitle = el("h3", "cq-chat-title", "Chat with an AI careers guide");
       const chatIntro = el("p", "cq-chat-sub",
-        "Ask questions about these jobs, what skills they use day-to-day, or how you could start exploring them.");
+        "Ask questions about your dream jobs, what skills they use day-to-day, or how you could start exploring them.");
       const chatWrap = el("div", "cq-chatwrap");
 
       while (chatSource.firstChild) {
