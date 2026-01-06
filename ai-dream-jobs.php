@@ -2,14 +2,14 @@
 /**
  * Plugin Name: AI Dream Jobs
  * Description: Students enter 5 dream jobs, rank them, then get AI-powered career feedback & chat. Use shortcode [ai_dream_jobs].
- * Version: 5.1.3
+ * Version: 6.0.0
  * Author: MisterT9007
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class AI_Dream_Jobs {
-    const VERSION      = '5.1.3';
+    const VERSION      = '6.0.0';
     const TABLE        = 'mfsd_ai_dream_jobs_results';
     const NONCE_ACTION = 'wp_rest';
 
@@ -283,9 +283,9 @@ class AI_Dream_Jobs {
                         $mwai = $GLOBALS['mwai'];
 
                         $instructions = <<<'PROMPT'
-You are a friendly UK careers adviser and motivational coach for learners aged 12–14, guiding them to explore their future selves through curiosity, self-belief, and positive action.
+You are a friendly UK careers adviser and motivational coach speaking directly to a learner aged 12–14. Your role is to guide them to explore their future self through curiosity, self-belief, and positive action.
 
-All advice must reflect Steve Solutions principles, promoting resilience, growth, and a solutions mindset.
+All advice must reflect Steve's Solutions Mindset principles, promoting resilience, growth, and a solutions mindset.
 
 Steve's Solution Mindset principles:
 • "What is the solution to every problem I face?"
@@ -302,11 +302,13 @@ Steve's Solution Mindset principles:
 • "Be the person your dog thinks you are."
 • "It's nice to be important, but more important to be nice."
 
+CRITICAL: Address the student directly using "you" and "your" throughout. Say "your dream jobs" NOT "their dream jobs" or "the student's dream jobs".
+
 Tone: warm, supportive, empowering; never judgmental. Use age-appropriate UK language (12–14).
 Promote self-reflection ("What are you most curious about?"), exploration ("Let's discover what skills this career uses!"),
 and action ("Try this small next step…"). Avoid direct criticism; offer constructive, growth-focused feedback.
 
-Keep advice practical, motivational, and aligned with personal development so learners:
+Keep advice practical, motivational, and aligned with personal development so they:
 • explore career interests and pathways,
 • build confidence in their abilities and choices,
 • learn to problem-solve with optimism and persistence,
@@ -316,10 +318,10 @@ PROMPT;
                         $prompt  = $instructions . "\n\n";
                         
                         if ( $mbti_type ) {
-                            $prompt .= "The student's MBTI personality type is: $mbti_type\n\n";
+                            $prompt .= "Your MBTI personality type is: $mbti_type\n\n";
                         }
 
-                        $prompt .= "Their dream jobs are:\n";
+                        $prompt .= "Your dream jobs are:\n";
                         foreach ( $top5 as $i => $job ) {
                             $prompt .= ( $i + 1 ) . ") $job\n";
                         }
@@ -331,20 +333,20 @@ PROMPT;
                         $prompt .= "• 3-4 helpful personal traits\n";
                         
                         if ( $mbti_type ) {
-                            $prompt .= "• How the $mbti_type personality type aligns with this career (be specific about strengths)\n";
+                            $prompt .= "• How your $mbti_type personality type aligns with this career (be specific about your strengths)\n";
                         }
                         
                         $prompt .= "• Brief UK employment outlook\n\n";
 
-                        $prompt .= "Then compare the five jobs: what do they have in common, and how are they different?\n";
+                        $prompt .= "Then compare these five jobs: what do they have in common, and how are they different?\n";
                         
                         if ( $mbti_type ) {
-                            $prompt .= "\nBased on their $mbti_type type, which of these careers might be the natural best fit and why? ";
-                            $prompt .= "Explain how $mbti_type traits (like " . $this->get_mbti_traits( $mbti_type ) . ") ";
+                            $prompt .= "\nBased on your $mbti_type type, which of these careers might be the natural best fit for you and why? ";
+                            $prompt .= "Explain how your $mbti_type traits (like " . $this->get_mbti_traits( $mbti_type ) . ") ";
                             $prompt .= "connect to these career choices.\n";
                         }
                         
-                        $prompt .= "\nFinish with an encouraging paragraph suggesting concrete next steps they could take this month.";
+                        $prompt .= "\nFinish with an encouraging paragraph suggesting concrete next steps you could take this month to explore these careers.";
 
                         $analysis = $mwai->simpleTextQuery( $prompt );
 
