@@ -429,20 +429,108 @@
       card.appendChild(analysisBox);
     }
 
-    if (chatSource && chatSource.firstChild) {
-      const chatTitle = el("h3", "cq-chat-title", "Chat with an AI careers guide");
-      const chatIntro = el("p", "cq-chat-sub",
-        "Ask questions about your dream jobs, what skills they use day-to-day, or how you could start exploring them.");
-      const chatWrap = el("div", "cq-chatwrap");
-
-      while (chatSource.firstChild) {
-        chatWrap.appendChild(chatSource.firstChild);
+    // Add custom AI careers chat
+    const chatTitle = el("h3", "cq-chat-title", "Chat with an AI careers guide");
+    const chatIntro = el("p", "cq-chat-sub",
+      "Ask questions about your dream jobs, what skills they use day-to-day, or how you could start exploring them.");
+    const chatWrap = el("div", "cq-chatwrap");
+    
+    // Chat history container
+    const chatHistory = el("div", "cq-chat-history");
+    chatHistory.style.cssText = "max-height: 400px; overflow-y: auto; margin-bottom: 12px; padding: 10px; background: #f5f5f5; border-radius: 6px;";
+    
+    // Initial AI message
+    const initialMsg = el("div", "cq-chat-msg ai-msg");
+    initialMsg.style.cssText = "margin-bottom: 10px; padding: 8px 12px; background: #e3f2fd; border-radius: 8px; border-left: 3px solid #2196f3;";
+    initialMsg.textContent = "Hi! I'm here to help you explore your dream jobs. What would you like to know?";
+    chatHistory.appendChild(initialMsg);
+    
+    chatWrap.appendChild(chatHistory);
+    
+    // Input container
+    const inputContainer = el("div");
+    inputContainer.style.cssText = "display: flex; gap: 8px; align-items: center;";
+    
+    const chatInput = document.createElement("input");
+    chatInput.type = "text";
+    chatInput.placeholder = "Ask about skills, qualifications, salaries...";
+    chatInput.style.cssText = "flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;";
+    
+    const sendBtn = el("button", "cq-btn", "Send");
+    sendBtn.style.cssText = "padding: 10px 20px; white-space: nowrap;";
+    
+    // Send message function
+    const sendMessage = async () => {
+      const userMsg = chatInput.value.trim();
+      if (!userMsg) return;
+      
+      // Add user message to history
+      const userMsgEl = el("div", "cq-chat-msg user-msg");
+      userMsgEl.style.cssText = "margin-bottom: 10px; padding: 8px 12px; background: #fff; border-radius: 8px; border-left: 3px solid #666; text-align: right;";
+      userMsgEl.textContent = userMsg;
+      chatHistory.appendChild(userMsgEl);
+      
+      // Clear input and disable send button
+      chatInput.value = "";
+      sendBtn.disabled = true;
+      sendBtn.textContent = "Thinking...";
+      
+      // Scroll to bottom
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+      
+      try {
+        const response = await fetch(cfg.restUrlCareerChat, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-WP-Nonce': cfg.nonce || ''
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            message: userMsg
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.ok && data.response) {
+            const aiMsgEl = el("div", "cq-chat-msg ai-msg");
+            aiMsgEl.style.cssText = "margin-bottom: 10px; padding: 8px 12px; background: #e3f2fd; border-radius: 8px; border-left: 3px solid #2196f3;";
+            aiMsgEl.textContent = data.response;
+            chatHistory.appendChild(aiMsgEl);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+          }
+        } else {
+          throw new Error('Failed to get response');
+        }
+      } catch (err) {
+        console.error('Chat error:', err);
+        const errorMsgEl = el("div", "cq-chat-msg error-msg");
+        errorMsgEl.style.cssText = "margin-bottom: 10px; padding: 8px 12px; background: #ffebee; border-radius: 8px; border-left: 3px solid #f44336;";
+        errorMsgEl.textContent = "Sorry, I couldn't process your message. Please try again.";
+        chatHistory.appendChild(errorMsgEl);
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = "Send";
+        chatInput.focus();
       }
-
-      card.appendChild(chatTitle);
-      card.appendChild(chatIntro);
-      card.appendChild(chatWrap);
-    }
+    };
+    
+    // Event listeners
+    sendBtn.onclick = sendMessage;
+    chatInput.onkeypress = (e) => {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    };
+    
+    inputContainer.appendChild(chatInput);
+    inputContainer.appendChild(sendBtn);
+    chatWrap.appendChild(inputContainer);
+    
+    card.appendChild(chatTitle);
+    card.appendChild(chatIntro);
+    card.appendChild(chatWrap);
 
     wrap.appendChild(card);
     root.replaceChildren(wrap);

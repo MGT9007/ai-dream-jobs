@@ -2,14 +2,14 @@
 /**
  * Plugin Name: AI Dream Jobs
  * Description: Students enter 5 dream jobs, rank them, then get AI-powered career feedback & chat. Use shortcode [ai_dream_jobs].
- * Version: 6.0.0
+ * Version: 6.0.1
  * Author: MisterT9007
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class AI_Dream_Jobs {
-    const VERSION      = '6.0.0';
+    const VERSION      = '6.0.1';
     const TABLE        = 'mfsd_ai_dream_jobs_results';
     const NONCE_ACTION = 'wp_rest';
 
@@ -91,6 +91,7 @@ class AI_Dream_Jobs {
         $config = array(
             'restUrlSubmit' => esc_url_raw( rest_url( 'ai-dream-jobs/v1/submit' ) ),
             'restUrlStatus' => esc_url_raw( rest_url( 'ai-dream-jobs/v1/status' ) ),
+            'restUrlCareerChat' => esc_url_raw( rest_url( 'ai-dream-jobs/v1/career-chat' ) ),
             'nonce'         => wp_create_nonce( 'wp_rest' ),
             'user'          => is_user_logged_in() ? wp_get_current_user()->user_login : '',
             'email'         => is_user_logged_in() ? wp_get_current_user()->user_email : '',
@@ -123,6 +124,12 @@ class AI_Dream_Jobs {
         register_rest_route( 'ai-dream-jobs/v1', '/status', array(
             'methods'             => 'GET',
             'callback'            => array( $this, 'handle_status' ),
+            'permission_callback' => array( $this, 'check_permission' ),
+        ) );
+
+        register_rest_route( 'ai-dream-jobs/v1', '/career-chat', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'handle_career_chat' ),
             'permission_callback' => array( $this, 'check_permission' ),
         ) );
     }
@@ -430,6 +437,91 @@ PROMPT;
             if ( $pid ) return (int) $pid;
         }
         return (int) get_current_user_id();
+    }
+
+    public function handle_career_chat( WP_REST_Request $req ) {
+        global $wpdb;
+        $user_id = $this->get_current_user_id();
+        $user_message = sanitize_text_field( $req->get_param( 'message' ) );
+
+        if ( ! $user_id || ! $user_message ) {
+            return new WP_REST_Response( array( 
+                'ok' => false, 
+                'error' => 'Invalid request' 
+            ), 400 );
+        }
+
+        // Get user's dream jobs data
+        $table = $wpdb->prefix . self::TABLE;
+        $saved = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM $table WHERE user_id=%d ORDER BY updated_at DESC LIMIT 1",
+            $user_id
+        ), ARRAY_A );
+
+        $jobs = array();
+        $ranking = array();
+        $mbti_type = null;
+
+        if ( $saved ) {
+            $jobs = $saved['jobs_json'] ? json_decode( $saved['jobs_json'], true ) : array();
+            $ranking = $saved['ranking_json'] ? json_decode( $saved['ranking_json'], true ) : array();
+            $mbti_type = $saved['mbti_type'];
+        }
+
+        // Generate AI response with context
+        $response = '';
+        if ( isset( $GLOBALS['mwai'] ) ) {
+            try {
+                $mwai = $GLOBALS['mwai'];
+                $username = function_exists( 'um_get_display_name' ) 
+                    ? um_get_display_name( $user_id ) 
+                    : wp_get_current_user()->display_name;
+
+                // Build context-aware system prompt
+                $systemPrompt = "You are a friendly UK careers adviser speaking directly to $username, a student aged 12-14 exploring their career interests.\n\n";
+
+                if ( ! empty( $ranking ) ) {
+                    $systemPrompt .= "Their dream jobs (in order of preference) are:\n";
+                    foreach ( $ranking as $i => $job ) {
+                        $systemPrompt .= ( $i + 1 ) . ". $job\n";
+                    }
+                    $systemPrompt .= "\n";
+                }
+
+                if ( $mbti_type ) {
+                    $systemPrompt .= "Their MBTI personality type is: $mbti_type\n";
+                    $systemPrompt .= "Their strengths include: " . $this->get_mbti_traits( $mbti_type ) . ".\n\n";
+                }
+
+                $systemPrompt .= "Your role is to:\n";
+                $systemPrompt .= "- Answer their questions about careers, skills, and pathways\n";
+                $systemPrompt .= "- Provide practical, age-appropriate UK career guidance\n";
+                $systemPrompt .= "- Connect advice to their specific dream jobs and personality type\n";
+                $systemPrompt .= "- Encourage exploration and a growth mindset\n";
+                $systemPrompt .= "- Use Steve's Solutions Mindset principles (see the main analysis for details)\n\n";
+
+                $systemPrompt .= "CRITICAL: Address $username directly using 'you' and 'your'. Say 'your dream job as a Game Developer' NOT 'the job of Game Developer' or 'their dream job'.\n\n";
+
+                $systemPrompt .= "Keep responses concise (2-4 sentences), warm, practical, and age-appropriate. ";
+                $systemPrompt .= "Always relate advice back to their specific dream jobs or personality type when relevant. ";
+                $systemPrompt .= "If they ask about careers NOT in their list, still provide helpful UK-specific guidance.";
+
+                // Use AI Engine to generate response
+                $fullPrompt = $systemPrompt . "\n\nStudent asks: " . $user_message;
+                $response = $mwai->simpleTextQuery( $fullPrompt );
+
+            } catch ( Exception $e ) {
+                error_log( 'AI Dream Jobs Chat error: ' . $e->getMessage() );
+                $response = "I'm having trouble connecting right now. Please try asking your question again in a moment.";
+            }
+        } else {
+            $response = "AI assistance is currently unavailable.";
+        }
+
+        return new WP_REST_Response( array(
+            'ok' => true,
+            'response' => $response
+        ), 200 );
     }
 }
 
